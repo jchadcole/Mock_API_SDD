@@ -42,7 +42,8 @@ docker-compose.yml   Self-host both apps together
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22.9+ (the API's `dev`/`start` scripts pass `--use-system-ca` to Node so it trusts your
+  OS's certificate store — see "Corporate network / TLS interception" below)
 - A Postman account with an [API key](https://learning.postman.com/docs/developer/postman-api/authentication/)
   (Postman → Settings → API keys)
 - A Postman workspace to create specs/collections/mocks in
@@ -105,6 +106,21 @@ reflected on disk.
 
 Commit `specs/**` alongside your application code so spec changes go through the same review
 process (PRs, CI) as everything else — that's the "spec-driven" part.
+
+## Corporate network / TLS interception
+
+If "Sync to Postman" (or any other Postman action) fails with a `502` and a message like
+`fetch failed`, check your API terminal for the underlying cause. If it says something like
+`unable to get local issuer certificate` / `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, your machine is
+behind a corporate TLS-inspection proxy (Zscaler, Netskope, Cisco Umbrella, etc.). Your OS trusts
+that proxy's root certificate (so `curl` and browsers work fine), but Node.js doesn't use the OS
+certificate store by default, so its own `fetch()` calls fail.
+
+This is already handled for you as long as you're on Node 22.9+: the `dev`/`start` scripts set
+`NODE_OPTIONS=--use-system-ca`, which tells Node to trust the same certificates as the rest of
+your OS. If you're stuck on an older Node version and can't upgrade, the fallback is to export
+your OS's trusted root certificates to a `.pem` file and set `NODE_EXTRA_CA_CERTS` to that path
+before starting the server.
 
 ## Notes on the Postman API integration
 
