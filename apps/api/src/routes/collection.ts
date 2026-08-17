@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../db/client.js";
 import { postmanClient } from "../postman/client.js";
-import type { PostmanCollectionRef } from "../postman/types.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const collectionRouter = Router({ mergeParams: true });
@@ -28,21 +27,27 @@ collectionRouter.post(
       let collectionId = project.postmanCollectionId;
 
       if (!collectionId) {
-        const { taskId } = await postmanClient.generateCollection(project.postmanSpecId);
-        const result = await postmanClient.pollTask<PostmanCollectionRef>(() =>
-          postmanClient.getGenerateCollectionTaskStatus(project.postmanSpecId!, taskId)
+        const { taskId } = await postmanClient.generateCollection(
+          project.postmanSpecId,
+          `${project.name} collection`
         );
-        if (result.status === "failed" || !result.result) {
+        const result = await postmanClient.pollTask(() =>
+          postmanClient.getTaskStatus(project.postmanSpecId!, taskId)
+        );
+        const generatedId = result.details?.resources?.[0]?.id;
+        if (result.status === "failed" || !generatedId) {
           throw new Error(result.error ?? "Collection generation failed");
         }
-        collectionId = result.result.id;
+        // Postman returns this id already in `ownerId-uuid` UID form, which is what every
+        // other collection endpoint (getCollection, createMock, sync-with-spec, docs) expects.
+        collectionId = generatedId;
       } else {
         const { taskId } = await postmanClient.syncCollectionWithSpec(
           project.postmanSpecId,
           collectionId
         );
         const result = await postmanClient.pollTask(() =>
-          postmanClient.getSyncTaskStatus(project.postmanSpecId!, taskId)
+          postmanClient.getTaskStatus(project.postmanSpecId!, taskId)
         );
         if (result.status === "failed") {
           throw new Error(result.error ?? "Collection sync failed");

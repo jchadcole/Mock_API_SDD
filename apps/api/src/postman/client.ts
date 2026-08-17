@@ -1,10 +1,5 @@
 import { env } from "../env.js";
-import type {
-  PostmanCollectionRef,
-  PostmanMock,
-  PostmanSpec,
-  PostmanTaskResult,
-} from "./types.js";
+import type { PostmanMock, PostmanSpec, PostmanTaskResult } from "./types.js";
 
 const BASE_URL = "https://api.getpostman.com";
 
@@ -80,7 +75,9 @@ export const postmanClient = {
   }): Promise<PostmanSpec> {
     const workspaceId = params.workspaceId ?? env.postmanWorkspaceId;
     const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
-    const res = await request<{ spec: PostmanSpec }>(`/specs${query}`, {
+    // NOTE: unlike most Postman endpoints, POST /specs returns the spec object directly
+    // (not wrapped in `{ spec: {...} }`) — confirmed against the live API.
+    return request<PostmanSpec>(`/specs${query}`, {
       method: "POST",
       body: JSON.stringify({
         name: params.name,
@@ -88,7 +85,6 @@ export const postmanClient = {
         files: params.files,
       }),
     });
-    return res.spec;
   },
 
   async getSpecDefinition(specId: string, filePath = "index.yaml"): Promise<string> {
@@ -112,38 +108,49 @@ export const postmanClient = {
   // ---------------------------------------------------------------------
   // Collection generation / sync (async operations)
   // ---------------------------------------------------------------------
-  async generateCollection(specId: string): Promise<{ taskId: string }> {
-    return request<{ taskId: string }>(`/specs/${specId}/generations/collections`, {
+  async generateCollection(specId: string, name: string): Promise<{ taskId: string }> {
+    // NOTE: the endpoint is singular ("generations/collection"), and the request body
+    // must NOT include `elementType` (despite what the generateCollection tool schema
+    // implies) but DOES require every `options` field to be explicitly present — both
+    // confirmed by trial against the live API, since Postman's docs for this endpoint
+    // are inconsistent with its actual behavior.
+    return request<{ taskId: string }>(`/specs/${specId}/generations/collection`, {
       method: "POST",
+      body: JSON.stringify({
+        name,
+        options: {
+          requestNameSource: "Fallback",
+          indentCharacter: "Space",
+          parametersResolution: "Example",
+          folderStrategy: "Paths",
+          includeAuthInfoInExample: true,
+          enableOptionalParameters: true,
+          keepImplicitHeaders: false,
+          includeDeprecated: true,
+          alwaysInheritAuthentication: false,
+          nestedFolderHierarchy: false,
+        },
+      }),
     });
-  },
-
-  async getGenerateCollectionTaskStatus(
-    specId: string,
-    taskId: string
-  ): Promise<PostmanTaskResult<PostmanCollectionRef>> {
-    return request<PostmanTaskResult<PostmanCollectionRef>>(
-      `/specs/${specId}/generations/collections/${taskId}`
-    );
   },
 
   async syncCollectionWithSpec(
     specId: string,
-    collectionId: string
+    collectionUid: string
   ): Promise<{ taskId: string }> {
     return request<{ taskId: string }>(
-      `/specs/${specId}/collections/${collectionId}/sync-with-spec`,
+      `/specs/${specId}/collections/${collectionUid}/sync-with-spec`,
       { method: "POST" }
     );
   },
 
-  async getSyncTaskStatus(
-    specId: string,
-    taskId: string
-  ): Promise<PostmanTaskResult> {
-    return request<PostmanTaskResult>(
-      `/specs/${specId}/tasks/${taskId}`
-    );
+  /**
+   * Generic task-status poller used for both collection generation and spec/collection sync.
+   * Confirmed shape against the live API: `{ status, meta, details: { resources: [{ id, url }] } }`
+   * — there is no `result` field like the (undocumented) generations-specific endpoint implied.
+   */
+  async getTaskStatus(specId: string, taskId: string): Promise<PostmanTaskResult> {
+    return request<PostmanTaskResult>(`/specs/${specId}/tasks/${taskId}`);
   },
 
   async syncSpecWithCollection(specId: string, collectionId: string): Promise<{ taskId: string }> {
@@ -154,10 +161,10 @@ export const postmanClient = {
   },
 
   /** Polls an async spec-hub task until it settles (completed/failed) or times out. */
-  async pollTask<T>(
-    fetchStatus: () => Promise<PostmanTaskResult<T>>,
+  async pollTask(
+    fetchStatus: () => Promise<PostmanTaskResult>,
     { intervalMs = 2000, timeoutMs = 60000 } = {}
-  ): Promise<PostmanTaskResult<T>> {
+  ): Promise<PostmanTaskResult> {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
       const status = await fetchStatus();
@@ -181,6 +188,7 @@ export const postmanClient = {
   // Mocks
   // ---------------------------------------------------------------------
   async createMock(params: {
+    /** Collection UID (`ownerId-uuid`) — a bare collection id is rejected. */
     collectionId: string;
     name: string;
     workspaceId?: string;
@@ -202,12 +210,28 @@ export const postmanClient = {
   // ---------------------------------------------------------------------
   // Docs
   // ---------------------------------------------------------------------
-  async publishDocumentation(collectionId: string): Promise<{ docsUrl: string }> {
-    const res = await request<{ docsUrl: string }>(
-      `/collections/${collectionId}/publish`,
-      { method: "POST" }
+  async publishDocumentation(collectionUid: string): Promise<{ docsUrl: string | null }> {
+    // NOTE: this is a PUT to /collections/{uid}/public-documentations (not POST .../publish
+    // like the older, deprecated endpoint) and requires `customColor`/`customization` bodies.
+    // The exact response shape wasn't verified live (publishing is a public, hard-to-undo
+    // side effect), so we defensively look for a URL under a few plausible field names.
+    const res = await request<Record<string, unknown>>(
+      `/collections/${collectionUid}/public-documentations`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          customColor: { highlight: "FF6C37", rightSidebar: "FFFFFF", topBar: "FFFFFF" },
+          documentationLayout: "classic-single-column",
+          customization: { metaTags: [] },
+        }),
+      }
     );
-    return res;
+    const docsUrl =
+      (res.docsUrl as string | undefined) ??
+      (res.url as string | undefined) ??
+      (res.publicUrl as string | undefined) ??
+      null;
+    return { docsUrl };
   },
 
   // ---------------------------------------------------------------------

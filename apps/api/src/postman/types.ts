@@ -11,23 +11,31 @@ export interface PostmanAsyncTask {
   taskId: string;
 }
 
-export type PostmanTaskStatus = "pending" | "processing" | "completed" | "failed";
+export type PostmanTaskStatus = "pending" | "in-progress" | "completed" | "failed";
 
-export interface PostmanTaskResult<T = unknown> {
+/**
+ * Shape of `GET /specs/{specId}/tasks/{taskId}` — the single generic task-status endpoint
+ * used for both collection generation and spec/collection sync. Confirmed against the live
+ * API: there is no top-level `result` field; generated resources (e.g. the new collection's
+ * id, already in `ownerId-uuid` UID form) show up under `details.resources`.
+ */
+export interface PostmanTaskResult {
   status: PostmanTaskStatus;
-  result?: T;
+  meta?: { action?: string; model?: string };
+  details?: { resources?: { id: string; url?: string }[] };
   error?: string;
 }
 
 export interface PostmanCollectionRef {
+  /** Collection UID in `ownerId-uuid` form — required by most other collection endpoints. */
   id: string;
-  uid?: string;
-  name?: string;
+  url?: string;
 }
 
 export interface PostmanMock {
   id: string;
-  url: string;
-  collectionId: string;
+  /** Postman returns `mockUrl`, not `url`. */
+  mockUrl: string;
+  collection: string;
   name?: string;
 }

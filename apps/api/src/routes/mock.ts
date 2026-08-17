@@ -26,7 +26,7 @@ mockRouter.post(
 
       const updated = await prisma.project.update({
         where: { id: project.id },
-        data: { postmanMockId: mock.id, postmanMockUrl: mock.url },
+        data: { postmanMockId: mock.id, postmanMockUrl: mock.mockUrl },
       });
 
       await prisma.syncRun.create({
