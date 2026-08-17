@@ -99,8 +99,9 @@ export const postmanClient = {
     filePath: string,
     content: string
   ): Promise<void> {
+    // NOTE: this is a PATCH, not a PUT - PUT returns a 404 on the live API.
     await request(`/specs/${specId}/files/${encodeURIComponent(filePath)}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify({ content }),
     });
   },
@@ -134,30 +135,44 @@ export const postmanClient = {
     });
   },
 
+  /**
+   * Re-syncs a generated collection with its source spec's latest changes.
+   * NOTE: the real endpoint is `PUT /collections/{uid}/synchronizations?specId=...`
+   * (not the `/specs/.../sync-with-spec` path the API naming elsewhere would suggest).
+   * Postman returns a 400 "Collection is already in sync" when there's nothing to do -
+   * callers should treat that as a benign success, not a failure.
+   */
   async syncCollectionWithSpec(
     specId: string,
     collectionUid: string
-  ): Promise<{ taskId: string }> {
-    return request<{ taskId: string }>(
-      `/specs/${specId}/collections/${collectionUid}/sync-with-spec`,
-      { method: "POST" }
-    );
+  ): Promise<{ taskId: string } | { alreadyInSync: true }> {
+    try {
+      return await request<{ taskId: string }>(
+        `/collections/${collectionUid}/synchronizations?specId=${encodeURIComponent(specId)}`,
+        { method: "PUT" }
+      );
+    } catch (err) {
+      if (err instanceof PostmanApiError && err.status === 400) {
+        const detail = (err.body as { detail?: string } | undefined)?.detail ?? "";
+        if (/already in sync/i.test(detail)) {
+          return { alreadyInSync: true };
+        }
+      }
+      throw err;
+    }
   },
 
   /**
-   * Generic task-status poller used for both collection generation and spec/collection sync.
-   * Confirmed shape against the live API: `{ status, meta, details: { resources: [{ id, url }] } }`
-   * — there is no `result` field like the (undocumented) generations-specific endpoint implied.
+   * Task-status poller for collection generation. Confirmed shape against the live API:
+   * `{ status, meta, details: { resources: [{ id, url }] } }` - there is no `result` field.
    */
-  async getTaskStatus(specId: string, taskId: string): Promise<PostmanTaskResult> {
+  async getSpecTaskStatus(specId: string, taskId: string): Promise<PostmanTaskResult> {
     return request<PostmanTaskResult>(`/specs/${specId}/tasks/${taskId}`);
   },
 
-  async syncSpecWithCollection(specId: string, collectionId: string): Promise<{ taskId: string }> {
-    return request<{ taskId: string }>(
-      `/specs/${specId}/collections/${collectionId}/sync-with-collection`,
-      { method: "POST" }
-    );
+  /** Task-status poller for collection sync - a different, collection-scoped endpoint. */
+  async getCollectionTaskStatus(collectionUid: string, taskId: string): Promise<PostmanTaskResult> {
+    return request<PostmanTaskResult>(`/collections/${collectionUid}/tasks/${taskId}`);
   },
 
   /** Polls an async spec-hub task until it settles (completed/failed) or times out. */

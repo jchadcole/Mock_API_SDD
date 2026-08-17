@@ -32,7 +32,7 @@ collectionRouter.post(
           `${project.name} collection`
         );
         const result = await postmanClient.pollTask(() =>
-          postmanClient.getTaskStatus(project.postmanSpecId!, taskId)
+          postmanClient.getSpecTaskStatus(project.postmanSpecId!, taskId)
         );
         const generatedId = result.details?.resources?.[0]?.id;
         if (result.status === "failed" || !generatedId) {
@@ -42,15 +42,17 @@ collectionRouter.post(
         // other collection endpoint (getCollection, createMock, sync-with-spec, docs) expects.
         collectionId = generatedId;
       } else {
-        const { taskId } = await postmanClient.syncCollectionWithSpec(
+        const syncResult = await postmanClient.syncCollectionWithSpec(
           project.postmanSpecId,
           collectionId
         );
-        const result = await postmanClient.pollTask(() =>
-          postmanClient.getTaskStatus(project.postmanSpecId!, taskId)
-        );
-        if (result.status === "failed") {
-          throw new Error(result.error ?? "Collection sync failed");
+        if (!("alreadyInSync" in syncResult)) {
+          const result = await postmanClient.pollTask(() =>
+            postmanClient.getCollectionTaskStatus(collectionId!, syncResult.taskId)
+          );
+          if (result.status === "failed") {
+            throw new Error(result.error ?? "Collection sync failed");
+          }
         }
       }
 
