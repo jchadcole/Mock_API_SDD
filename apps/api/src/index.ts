@@ -3,6 +3,16 @@ import { env } from "./env.js";
 import { startDriftScheduler } from "./jobs/driftScheduler.js";
 import { ensureSpecsRoot } from "./services/specStore.js";
 
+// Defense in depth: every route is wrapped with asyncHandler so real request errors
+// become clean 500 responses, but this guards against anything unexpected slipping
+// through (e.g. in the background drift scheduler) so the whole process never dies.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection (server stays up):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (server stays up):", err);
+});
+
 async function main() {
   await ensureSpecsRoot();
 
