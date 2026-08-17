@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      - POSTMAN_API_KEY=${POSTMAN_API_KEY}
+      - POSTMAN_WORKSPACE_ID=${POSTMAN_WORKSPACE_ID}
+      - PORT=4000
+      - DATABASE_URL=file:./dev.db
+      - DRIFT_CHECK_INTERVAL_MINUTES=${DRIFT_CHECK_INTERVAL_MINUTES:-30}
+    volumes:
+      - ./specs:/app/specs
+      - api-db:/app/apps/api/prisma
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:4000
+    depends_on:
+      - api
+
+volumes:
+  api-db:

@@ -1,0 +1,75 @@
+openapi: 3.0.3
+info:
+  title: Example API
+  description: Sample spec used to demonstrate the Spec-Driven Development workflow.
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /widgets:
+    get:
+      summary: List widgets
+      operationId: listWidgets
+      responses:
+        "200":
+          description: A list of widgets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Widget"
+    post:
+      summary: Create a widget
+      operationId: createWidget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetInput"
+      responses:
+        "201":
+          description: The created widget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+  /widgets/{widgetId}:
+    get:
+      summary: Get a widget by id
+      operationId: getWidget
+      parameters:
+        - name: widgetId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A single widget
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Widget"
+        "404":
+          description: Widget not found
+components:
+  schemas:
+    Widget:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name]
+    WidgetInput:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]

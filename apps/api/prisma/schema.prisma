@@ -1,0 +1,56 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id                   String   @id @default(cuid())
+  name                 String
+  slug                 String   @unique
+  specPath             String
+  postmanWorkspaceId   String?
+  postmanSpecId        String?
+  postmanCollectionId  String?
+  postmanMockId        String?
+  postmanMockUrl       String?
+  docsUrl              String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  syncRuns    SyncRun[]
+  testRuns    TestRun[]
+  driftChecks DriftCheck[]
+}
+
+model SyncRun {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String
+  status    String
+  resultJson String?
+  createdAt DateTime @default(now())
+}
+
+model TestRun {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  newmanReportJson String
+  passCount        Int
+  failCount        Int
+  createdAt        DateTime @default(now())
+}
+
+model DriftCheck {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  driftFound  Boolean
+  diffJson    String?
+  checkedAt   DateTime @default(now())
+}
