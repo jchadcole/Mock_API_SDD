@@ -227,26 +227,33 @@ export const postmanClient = {
   // ---------------------------------------------------------------------
   async publishDocumentation(collectionUid: string): Promise<{ docsUrl: string | null }> {
     // NOTE: this is a PUT to /collections/{uid}/public-documentations (not POST .../publish
-    // like the older, deprecated endpoint) and requires `customColor`/`customization` bodies.
-    // The exact response shape wasn't verified live (publishing is a public, hard-to-undo
-    // side effect), so we defensively look for a URL under a few plausible field names.
-    const res = await request<Record<string, unknown>>(
+    // like the older, deprecated endpoint). Confirmed live: it requires `collectionId` in the
+    // body (in addition to the path) and a full `customization.appearance` block with at
+    // least one theme - a bare `{ metaTags: [] }` customization object is rejected. The
+    // response's URL field is `publicUrl`.
+    const colors = { highlight: "FF6C37", rightSidebar: "FFFFFF", topBar: "FFFFFF" };
+    const res = await request<{ publicUrl?: string }>(
       `/collections/${collectionUid}/public-documentations`,
       {
         method: "PUT",
         body: JSON.stringify({
-          customColor: { highlight: "FF6C37", rightSidebar: "FFFFFF", topBar: "FFFFFF" },
+          collectionId: collectionUid,
+          customColor: colors,
           documentationLayout: "classic-single-column",
-          customization: { metaTags: [] },
+          customization: {
+            metaTags: [],
+            appearance: {
+              default: "light",
+              themes: [
+                { name: "light", colors, logo: null },
+                { name: "dark", colors: { highlight: "FF6C37", rightSidebar: "1A1A1A", topBar: "1A1A1A" }, logo: null },
+              ],
+            },
+          },
         }),
       }
     );
-    const docsUrl =
-      (res.docsUrl as string | undefined) ??
-      (res.url as string | undefined) ??
-      (res.publicUrl as string | undefined) ??
-      null;
-    return { docsUrl };
+    return { docsUrl: res.publicUrl ?? null };
   },
 
   // ---------------------------------------------------------------------
